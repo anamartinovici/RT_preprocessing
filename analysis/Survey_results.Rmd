@@ -1,0 +1,695 @@
+---
+title: "Analyse survey responses"
+author: "Ana Martinovici"
+date: "`r Sys.time()`"
+output: 
+    html_document:
+        toc: true
+        toc_float: 
+            collapsed: false
+        number_sections: true
+        code_folding: hide
+        theme: cerulean
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+
+library("tidyverse")
+library("Cairo")
+library("here")
+
+load(here::here("data", "survey_data.RData"))
+
+```
+
+# Number of responses
+
+Of the `r nrow(processed_data)` observations in the dataset exported from Qualtrics, we exclude `r nrow(processed_data %>% filter(!is.na(excl_reason)))`:
+
+```{r}
+
+processed_data %>% 
+	filter(!is.na(excl_reason)) %>% 
+	group_by(excl_reason) %>% 
+	summarise(n_obs = n())
+
+analysis_sample <- processed_data %>% 
+	filter(is.na(excl_reason)) %>%
+	select(pseudo_ResponseID,
+		 geographical_area,
+		 years_experience,
+		 area_study,
+		 current_role,
+		 software_analyze,
+		 software_collect,
+		 starts_with("years_"),
+		 starts_with("excl_"),
+		 starts_with("Please_Mark"),
+		 starts_with("freq_"),
+		 starts_with("DataTrans_"),
+		 starts_with("ProcOrder_"),
+		 likelihood_reproduce)
+
+```
+
+The analysis sample has `r nrow(analysis_sample)` responses.
+
+# Years of experience
+
+Answers to the question "How many years of experience do you have in this research area? Please list the number of years you have worked on studies in this area.":
+
+- mean: `r round(mean(analysis_sample[["years_experience"]]), 1)`
+
+- median: `r median(analysis_sample[["years_experience"]])`
+
+```{r}
+
+figure_number <- 2
+
+My_Theme <- theme(
+	text = element_text(size = 14),
+	axis.title.x = element_text(size = 14),
+	axis.title.y = element_text(size = 14)
+)
+
+analysis_sample %>%
+	ggplot(aes(x = years_experience)) +
+	geom_bar(color = "white", fill = "#56B4E9") +
+	theme_bw() +
+	labs(y = "Number of responses",
+	     x = "Years of experience") + 
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_years_experience.png")),
+	 width = 8, height = 5, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+```{r}
+
+df_years_experience <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 starts_with("years_")) %>%
+	select(-years_experience) %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "var_name",
+			 values_to = "var_value") %>%
+	mutate(var_name = factor(var_name,
+					 levels = c("years_CollectRT",
+					 	     "years_AnalyseRT",
+					 	     "years_OS",
+					 	     "years_ExperimentCoding",
+					 	     "years_AnalysisCoding"),
+					 labels = c("Collecting RT",
+					 	     "Analyzing RT",
+					 	     "Open Science",
+					 	     "Experiment coding",
+					 	     "Analysis coding")))
+
+df_years_experience <- df_years_experience %>%
+	mutate(var_value = factor(var_value,
+					  levels = c(NA,
+					  	     "< 1 year",
+					  	     "1 - 3 years",
+					  	     "4 - 6 years",
+					  	     "7 - 9 years",
+					  	     "10+ years"),
+					  labels = c("n.a.",
+					  	     "< 1 year",
+					  	     "1 - 3 years",
+					  	     "4 - 6 years",
+					  	     "7 - 9 years",
+					  	     "10+ years"),
+					  exclude = NULL))
+
+
+df_years_experience %>%
+	ggplot(aes(x = var_value)) +
+	# fill with blue color, white borders of the bars
+	geom_bar(color = "white", fill = "#56B4E9") + 
+	theme_bw() +
+	facet_wrap(vars(var_name)) +
+	scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+	#text on the x axis is black
+	theme(axis.text.x = element_text(colour = "black")) + 
+	# Change facet label  background colour
+	theme(strip.background = element_rect(fill = "white")) + 
+	# Change facet label text colour
+	theme(strip.text = element_text(colour = "black")) + 
+	labs(x = "",
+	     y = "Number of responses") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_years_involvement.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+# Data exclusions
+
+Frequency of excluding, reporting, and reporting the exact number of participants (part), stimuli, and trials due to:
+
+```{r}
+aux_df <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 contains("_ExtEvent_"),
+		 contains("_FixedCr_"),
+		 contains("_DataDepCr_")) %>%
+	select(-contains("feedback"),
+		 -contains("importance"))
+aux_df <- aux_df %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "var_name",
+			 values_to = "var_value")
+aux_df <- aux_df %>%
+	mutate(var_name = str_sub(var_name, start = 6)) %>%
+	mutate(var_name = str_replace(var_name, "excl", "Exclude")) %>%
+	mutate(var_name = str_replace(var_name, "rep_exact", "ReportExact")) %>%
+	mutate(var_name = str_replace(var_name, "rep", "Report"))
+aux_df <- aux_df %>%
+	separate(var_name,
+		   into = c("excl_due_to", "do_what", "level_of_data"),
+		   sep = "_")
+aux_df <- aux_df %>%
+	mutate(var_value = factor(var_value,
+					  levels = c(NA,
+					  	     "Never",
+					  	     "Sometimes",
+					  	     "About half the time",
+					  	     "Most of the time",
+					  	     "Always"),
+					  labels = c("n.a.",
+					  	     "Never",
+					  	     "Sometimes",
+					  	     "About half the time",
+					  	     "Most of the time",
+					  	     "Always"),
+					  exclude = NULL))
+
+df_exclude <- aux_df %>%
+	filter(do_what == "Exclude")
+
+df_report <- df_exclude %>%
+	filter(var_value %in% c("Sometimes",
+					"About half the time",
+					"Most of the time",
+					"Always")) %>%
+	select(pseudo_ResponseID,
+		 excl_due_to,
+		 level_of_data) %>%
+	left_join(aux_df %>%
+		    	filter(do_what %in% c("Report", "ReportExact")),
+		    by = c("pseudo_ResponseID", "excl_due_to", "level_of_data"))
+
+aux_df <- rbind(df_exclude,
+		    df_report)
+
+aux_df <- aux_df %>%
+	mutate(level_of_data = factor(level_of_data,
+						levels = c("part",
+							     "stimuli",
+							     "trials"),
+						labels = c("Participants",
+							     "Stimuli",
+							     "Trials"))) %>%
+	mutate(do_what = factor(do_what,
+					levels = c("Exclude",
+						     "Report",
+						     "ReportExact"),
+					labels = c("Exclude",
+						     "Report excluding",
+						     "Report the exact number\nof excluded observations")))
+
+aux_df %>%
+	filter(excl_due_to %in% c("ExtEvent")) %>%
+	ggplot(aes(x = var_value)) +
+	# fill with blue color, white borders of the bars
+	geom_bar(color = "white",fill = "#56B4E9") + 
+	theme_bw() +
+	facet_grid(level_of_data ~ do_what) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	# Change facet label background colour
+	theme(strip.background = element_rect(fill = "white")) + 
+	# Change facet label text colour
+	theme(strip.text = element_text(colour = 'black')) + 
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_frequency_externalevents.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+```{r}
+aux_df %>%
+	filter(excl_due_to %in% c("FixedCr")) %>%
+	ggplot(aes(x = var_value)) +
+	geom_bar(color = "white", fill = "#56B4E9") +
+	theme_bw() +
+	facet_grid(level_of_data ~ do_what) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	theme(strip.background = element_rect(fill = "white")) + 
+	theme(strip.text = element_text(colour = 'black')) + 
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_frequency_fixedcriteria.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+```{r}
+aux_df %>%
+	filter(excl_due_to %in% c("DataDepCr")) %>%
+	ggplot(aes(x = var_value)) +
+	geom_bar(color = "white", fill = "#56B4E9") + 
+	theme_bw() +
+	facet_grid(level_of_data ~ do_what) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	theme(strip.background = element_rect(fill = "white")) + 
+	theme(strip.text = element_text(colour = 'black')) + 
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_frequency_datadependent.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+Importance ("How important do you think this processing step is for accuracy in analyses and interpretation?")
+
+```{r}
+
+aux_df <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 contains("_ExtEvent_"),
+		 contains("_FixedCr_"),
+		 contains("_DataDepCr_")) %>%
+	select(pseudo_ResponseID,
+		 contains("importance"))
+aux_df <- aux_df %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "var_name",
+			 values_to = "var_value")
+aux_df <- aux_df %>%
+	mutate(var_name = str_remove(var_name, "excl_")) %>%
+	mutate(var_name = str_remove(var_name, "_importance"))
+aux_df <- aux_df %>%
+	mutate(var_name = factor(var_name,
+					 levels = c("ExtEvent",
+					 	     "FixedCr",
+					 	     "DataDepCr"),
+					 labels = c("Events beyond\nthe researcher's control",
+					 	     "Fixed criteria",
+					 	     "Data-dependent criteria")))
+aux_df <- aux_df %>%
+	mutate(var_value = factor(var_value,
+					  levels = c(NA,
+					  	     "Not at all important",
+					  	     "Slightly important",
+					  	     "Moderately important",
+					  	     "Very important",
+					  	     "Extremely important"),
+					  labels = c("n.a.",
+					  	     "Not at all",
+					  	     "Slightly",
+					  	     "Moderately",
+					  	     "Very",
+					  	     "Extremely"),
+					  exclude = NULL))
+
+aux_df %>%
+	ggplot(aes(x = var_value)) +
+	geom_bar(color = "white", fill = "#56B4E9") +
+	theme_bw() +
+	facet_wrap(vars(var_name)) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	theme(strip.background = element_rect(fill = "white")) + 
+	theme(strip.text = element_text(colour = "black")) +
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_importance_C123.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+# Data processing and transformations
+
+```{r}
+
+aux_df <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 contains("DataTrans"),
+		 contains("ProcOrder")) %>%
+	select(-contains("importance"),
+		 -contains("feedback"))
+aux_df <- aux_df %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "var_name",
+			 values_to = "var_value")
+aux_df <- aux_df %>%
+	mutate(var_name = str_remove(var_name, "freq_"))
+aux_df <- aux_df %>%
+	mutate(var_value = factor(var_value,
+					  levels = c(NA,
+					  	     "Never",
+					  	     "Sometimes",
+					  	     "About half the time",
+					  	     "Most of the time",
+					  	     "Always"),
+					  labels = c("n.a.",
+					  	     "Never",
+					  	     "Sometimes",
+					  	     "About half the time",
+					  	     "Most of the time",
+					  	     "Always"),
+					  exclude = NULL))
+
+df_use <- aux_df %>%
+	filter(var_name == "DataTrans_do")
+
+df_report <- df_use %>%
+	filter(var_value %in% c("Sometimes",
+					"About half the time",
+					"Most of the time",
+					"Always")) %>%
+	select(pseudo_ResponseID) %>%
+	left_join(aux_df %>%
+		    	filter(var_name == "DataTrans_report"),
+		    by = c("pseudo_ResponseID"))
+
+aux_df <- rbind(df_use,
+		    df_report,
+		    aux_df %>%
+		    	filter(var_name == "ProcOrder_report"))
+
+aux_df <- aux_df %>%
+	mutate(var_name = factor(var_name,
+					 levels = c("DataTrans_do",
+					 	     "DataTrans_report",
+					 	     "ProcOrder_report"),
+					 labels = c("Use data transformations",
+					 	     "Report data transformations",
+					 	     "Report processing order")))
+
+aux_df %>%
+	ggplot(aes(x = var_value)) +
+	geom_bar(color = "white", fill = "#56B4E9") + 
+	theme_bw() +
+	ylab("Number of responses") +
+	xlab("") +
+	facet_wrap(vars(var_name)) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	theme(strip.background = element_rect(fill = "white")) + 
+	theme(strip.text = element_text(colour = "black")) + 
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_data_transformations.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+
+```{r}
+
+aux_df <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 contains("DataTrans"),
+		 contains("ProcOrder")) %>%
+	select(pseudo_ResponseID,
+		 contains("importance"))
+aux_df <- aux_df %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "var_name",
+			 values_to = "var_value")
+aux_df <- aux_df %>%
+	mutate(var_name = str_remove(var_name, "_importance"))
+aux_df <- aux_df %>%
+	mutate(var_name = factor(var_name,
+					 levels = c("DataTrans",
+					 	     "ProcOrder"),
+					 labels = c("Data transformations",
+					 	     "Processing order")))
+
+aux_df <- aux_df %>%
+	mutate(var_value = factor(var_value,
+					  levels = c(NA,
+					  	     "Not at all important",
+					  	     "Slightly important",
+					  	     "Moderately important",
+					  	     "Very important",
+					  	     "Extremely important"),
+					  labels = c("n.a.",
+					  	     "Not at all",
+					  	     "Slightly",
+					  	     "Moderately",
+					  	     "Very",
+					  	     "Extremely"),
+					  exclude = NULL))
+
+aux_df %>%
+	ggplot(aes(x = var_value)) +
+	geom_bar(color = "white", fill = "#56B4E9") + 
+	theme_bw() +
+	facet_wrap(vars(var_name)) +
+	theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+	theme(strip.background = element_rect(fill = "white")) + 
+	theme(strip.text = element_text(colour = "black")) + 
+	labs(y = "Number of responses",
+	     x = "") +
+	My_Theme
+
+ggsave(filename = here::here("figures",
+				     paste0("Fig", figure_number,
+				     	 "_importance_data_transformations.png")),
+	 width = 10, height = 7, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+```
+
+
+# Likelihood of reproducibility
+
+
+```{r}
+
+analysis_sample %>%
+	filter(!is.na(likelihood_reproduce)) %>%
+	arrange(likelihood_reproduce) %>%
+	ggplot(aes(x = likelihood_reproduce)) +
+	geom_bar(color = "white", fill = "#56B4E9") + 
+	theme_bw() +
+	theme(strip.background = element_rect(fill = "#56B4E9")) + 
+	theme(strip.text = element_text(colour = "black")) + 
+	labs(y = "Number of responses",
+	     x = "Likelihood (0 to 100)") +
+	scale_x_continuous(limits = c(0, 101)) +
+	My_Theme
+
+ggsave(filename = here::here("figures", 
+				     paste0("Fig", figure_number, 
+				     	 "_likelihood.png")),
+	 width = 7, height = 4, dpi = 500,
+	 type = "cairo")
+
+figure_number <- figure_number + 1
+
+mean(analysis_sample$likelihood_reproduce, na.rm = T)
+sd(analysis_sample$likelihood_reproduce, na.rm = T)
+
+```
+
+# Software
+
+```{r}
+
+df_software <- analysis_sample %>%
+	select(pseudo_ResponseID,
+		 software_collect,
+		 software_analyze)
+
+# I will separate by comma, so I need to modify a few responses to make this easier
+df_software <- df_software %>%
+	pivot_longer(-pseudo_ResponseID,
+			 names_to = "software_used_for",
+			 values_to = "name_of_software")
+df_software <- df_software %>%
+	mutate(software_used_for = case_when(software_used_for == "software_collect" ~ "data_collection",
+							 software_used_for == "software_analyze" ~ "data_analysis"))
+
+df_software <- df_software %>%
+	mutate(name_of_sw_edited = str_replace_all(name_of_software, pattern = "\\;", replacement = "\\,"))
+df_software <- df_software %>%
+	mutate(name_of_sw_edited = str_trim(name_of_sw_edited))
+
+df_software <- df_software %>%
+	mutate(name_of_sw_edited = 
+		 	case_when(name_of_sw_edited == "Depends. Often I get from gov't sources." ~ "not_specified", 
+		 		    name_of_sw_edited == "ePrime and Collector" ~ "eprime, collector",
+		 		    name_of_sw_edited == "Gorilla Eprime others in the past we wrote the software ourselves" ~ "Gorilla, Eprime",
+		 		    name_of_sw_edited == "jamovi, some recent work has been checked in both multi-level model and stimuli-as-fixed effects anova models in R by a highly trained person in MLM" ~ "jamovi, r",
+		 		    name_of_sw_edited == "Mostly self developed software" ~ "not_specified", 
+		 		    name_of_sw_edited == "PsychoPy (offline, my own Python code), JavaScript (for online studies, again my own code, no frameworks)" ~ "PsychoPy, JavaScript",
+		 		    name_of_sw_edited == "recently testable, sometimes proprietary web coding, previously a lot of superlab studies, a long time ago custom programmed stuff (not by me)" ~ "testable, not_specified, superlab, custom code",
+		 		    name_of_sw_edited == "Spss R Jamovi Excel sometimes" ~ "Spss, R, Jamovi, Excel",
+		 		    name_of_sw_edited == "used lots, but mostly R (on the q below, depends what you mean open science). Ignore the response since the q is poor." ~ "R, not_specified",
+		 		    TRUE ~ name_of_sw_edited))
+df_software <- df_software %>%
+	mutate(name_of_sw_edited = str_to_lower(name_of_sw_edited))
+
+df_software <- df_software %>%
+	mutate(copy_sw = name_of_sw_edited) %>%
+	separate(col = copy_sw,
+		   into = c("sw_1", "sw_2", "sw_3", "sw_4", "sw_5", "sw_6"),
+		   sep = "\\,",
+		   fill = "warn")
+
+df_software <- df_software %>%
+	pivot_longer(cols = starts_with("sw"),
+			 names_to = "var_name",
+			 values_to = "edited_software")
+
+df_software <- df_software %>%
+	filter(!is.na(edited_software))
+df_software <- df_software %>%
+	mutate(edited_software = str_trim(edited_software))
+df_software <- df_software %>%
+	filter(edited_software != "")
+
+df_software <- df_software %>%
+	mutate(edited_software = case_when(edited_software %in% c("custom code",
+										    "custom made online") ~ "custom",
+						     edited_software == "e-prime" ~ "eprime",
+						     edited_software == "jspsch" ~ "jspsych",
+						     edited_software == "lab.js" ~ "labjs",
+						     edited_software == "matlab ptb" ~ "matlab",
+						     edited_software == "matlab/octave" ~ "matlab",
+						     edited_software == "open sesame" ~ "opensesame",
+						     edited_software == "psychpy" ~ "psychopy",
+						     edited_software == "pyschopy" ~ "psychopy",
+						     edited_software == "spss (at the beginning)" ~ "spss",
+						     TRUE ~ edited_software))
+
+df_software <- df_software %>%
+	mutate(edited_software = if_else(str_detect(edited_software, "presentation"), "presentation", edited_software))
+
+df_software %>%
+	filter(software_used_for %in% c("data_collection")) %>%
+	group_by(software_used_for, edited_software) %>%
+	summarise(n_obs = n(), 
+		    percent = n()/nrow(df_software)) %>%
+	arrange(desc(n_obs)) %>%
+	print(n = 100)
+
+df_software %>%
+	filter(software_used_for %in% c("data_analysis")) %>%
+	group_by(software_used_for, edited_software) %>%
+	summarise(n_obs = n(),
+		    percent = n()/nrow(df_software)) %>%
+	arrange(desc(n_obs)) %>%
+	print(n = 100)
+
+aux_df <- df_software %>%
+	filter(software_used_for == "data_analysis") %>%
+	mutate(uses_R_for_analysis = if_else(edited_software == "r", 1, 0))
+
+aux_df <- aux_df %>%
+	group_by(pseudo_ResponseID) %>%
+	summarise(uses_R_for_analysis = sum(uses_R_for_analysis)) %>%
+	ungroup()
+
+analysis_sample <- analysis_sample %>%
+	left_join(aux_df,
+		    by = c("pseudo_ResponseID"))
+
+```
+
+
+# Demographics
+
+```{r}
+
+analysis_sample %>%
+	ggplot(aes(y = geographical_area)) +
+	geom_bar(color = "white", fill = "#56B4E9") + #fill with blue color, white borders of the bars
+	theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+	ylab("")
+
+analysis_sample %>% 
+	group_by(geographical_area) %>% 
+	count() %>% 
+	arrange(n) %>% 
+	mutate(percent = n / nrow(analysis_sample))
+
+analysis_sample <- analysis_sample %>%
+	mutate(area_study = str_to_lower(area_study))
+
+
+
+```
+
+
+Number of times that specific terms were used to describe the area of study, by participants (n = `r nrow(analysis_sample)`) in the analysis sample: 
+
+- "cognitive": n = `r nrow(analysis_sample %>% filter(str_detect(area_study, "cognitive")))`
+- "psychology": n = `r nrow(analysis_sample %>% filter(str_detect(area_study, "psychology")))`
+- "neuro": n = `r nrow(analysis_sample %>% filter(str_detect(area_study, "neuro")))`
+- "linguistics": n = `r nrow(analysis_sample %>% filter(str_detect(area_study, "linguistics")))`
+
+
+```{r}
+sessionInfo()
+```
+
