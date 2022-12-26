@@ -1,0 +1,126 @@
+Number	Article_ID	Keyword	Databank	Access_date	Rater	Reference	Article	Article_exp	Article_exp_group	Article_exp_group_cond	Paradigm	Hypothesis_tested	Hypothesis_test_used	Type_DV	N_total	Gender	N_between_groups	N_within_groups	gender	N_repeated_measurements	Condition1	N1	Mean1	SD1	Acc1	Condition2	N2	Mean2	SD2	Acc2	Condition3	N3	Mean3	SD3	Acc3	Condition4	Mean4	SD4	Acc4	Diff_cond1_cond2_mean	Diff_cond1_cond2_SD	Distribution	Results_reported	Preprocessing1_correct_answers_only	Rationale1	Preprocessing1_order	Preprocessing2_exclusion_missing_data	Rationale2	Preprocessing2_order	Preprocessing3_exclusion_fillers	Rationale3	Preprocessing3_order	Preprocessing4_exclusion_participants	Rationale4	Preprocessing4_order	Preprocessing5_exclusion_trials	Rationale5	Preprocessing5_order	Preprocessing6a_trim_fixed_minimum	Rationale6a	Preprocessing6b_trim_fixed_min_value	Rationale6b	Preprocessing6_order	Preprocessing7a_trim_fixed_maximum	Rationale7a	Preprocessing7b_trim_fixed_max_value	Rationale7b	Preprocessing7_order	Preprocessing8a_trim_data_driven_type	Rationale8a	Preprocessing8b_trim_data_driven_value	Rationale8b	Preprocessing8_order	Preprocessing9_transformation	Rationale9	Preprocessing9_order	Preprocessing10_robust_stat	Rationale10	Preprocessing10_order	Preprocessing11_assumption_check	Preprocessing12 _multiple comparison correction
+							Firstauthor_year	"Firstauthor_year_experiment
+"	Firstauthor_year_experiment_group	Firstauthor_year_experiment_group_condition			ANOVA	1 = RT	"total number of
+participants"	"% female in 
+the overall sample"	Number of groups	"Group i:
+Number of
+participants
+(sum male + female)"	"Group i:
+% of female"	"Group i:
+Overall number of trials/ 
+items "	"Group i:
+Condition 1
+= congruent"	"Group i:
+N participants
+in congruent
+condition"	"Group i:
+mean RT 
+congruent
+in msec"	"Group i:
+SD RT
+congruent
+in msec"	"Group i:
+Accuracy congruent
+(100 - % errors)
+in %"	"Group i:
+Condition 2
+= incongruent"	"Group i:
+N participants
+in incongruent
+condition"	"Group i:
+mean RT
+incongruent
+in msec"	"Group i:
+SD RT
+incongruent
+in msec"	"Group i:
+Accuracy 
+incongruent
+(100 - % errors)
+in %"	"Group i:
+Condition 3
+= neutral"	"Group i:
+N participants
+in neutral 
+condition"	"Group i:
+mean RT
+neutral
+in msec"	"Group i:
+SD RT
+neutral 
+in msec"	"Group i:
+Accuracy 
+neutral
+(100 - % errors)
+in %"	"Group i:
+Condition 4
+= ?"	"Group i:
+mean RT
+?
+in msec"	"Group i:
+SD RT
+?
+in msec"	"Group i:
+Accuracy 
+?
+(100 - % errors)
+in %"	"Group i:
+cost of inhibition = mean
+RT incongruent - congruent
+in ms"	"Group i: cost of inhibition = SD
+RT incongruent - congruent 
+in ms"	"Group i:
+data
+distribution"	1 = yes	0 = no incorrect trials were excluded	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no missing data excluded	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no fillers are excluded from analysis	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no participant data was excluded because of bad quality	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no trials excluded	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no fixed minimum trim applied	e.g., anticipation	0 = none	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no fixed maximum trim applied	"Do the authors 
+give a reason 
+for applying this 
+preprocessing 
+step?"	0 = none	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no data-driven trim applied	"Do the authors 
+give a reason 
+for applying this 
+preprocessing 
+step?"	0 = none	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no data transformation	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no robust statistics used	"Reason 
+for applying this 
+preprocessing 
+step"	1 = first step	0 = no assumptions checked	0 = no correction for multiple comparisons
+													ANCOVA	2 = RT&ACC																													2 = calculated with open data/ data provided by authors/ extracted from figure	1 = yes only correct trials included in RT analysis		2 = second step	1 = yes missing data excluded case-wise (entire participant)		2 = second step	1 = yes fillers are excluded		2 = second step	1 = yes participant data was excluded case-wise (entire participant)		2 = second step	1 = yes trials excluded		2 = second step	1 = yes fixed minimum trim applied		yes = exact value in ms		2 = second step	1 = yes fixed maximum trim applied		yes = exact value in ms		2 = second step	1 = yes SD_overall_mean trim once		yes = exact value		2 = second step	1 = yes inverse transformation		2 = second step	1 = yes non-parametric test		2 = second step	1 = sphericity checked	1 = Bonferroni correction
+													t-test	3 = Inverse Efficiency Score																														3 = NA not mentioned		3 = 3rd step	2 = yes missing data excluded list-wise (only missing measures)		3 = 3rd step	2 = no fillers in the experimental design		3 = 3rd step	2 = yes participant data was excluded list-wise (only resp.measure)		3 = 3rd step	3 = NA not mentioned		3 = 3rd step	2 =  NA not mentioned		NA = not mentioned		3 = 3rd step	2 =  NA not mentioned		NA = not mentioned		3 = 3rd step	2 = yes SD_group_mean trim once		NA = not mentioned		3 = 3rd step	2 = yes logarithmic transformation		3 = 3rd step	2 = yes bootstrapping		3 = 3rd step	2 = linearity checked	2 = Greenhouse Geisser
+													GLM	4 = Simon effect difference																																	3 = multiple imputation for missing data			3 = NA not mentioned			3 = NA not mentioned																3 = yes SD_participant_mean trim once					3 = yes other transformation			3 = yes other robust statistic			3 = normality of residuals	3 = Holm-Bonferroni
+													Bayesian ANOVA	5 = (mean RT incongruent - mean RT congruent) / mean RT all trials																																	4 = NA not mentioned																						4 = yes IQR_overall_median trim once					4 = NA not mentioned			4 = NA not mentioned			4 = NA not mentioned	4 = NA not mentioned
+																																																																					5 = yes IQR_group_median trim once					5 = Arcsine transformation							
+																																																																					6 = yes IQR_participant_median trim once												
+																																																																					7 = yes SD_overall_mean trim sequential												
+																																																																					8 = yes SD_group_mean trim sequential												
+																																																																					9 = yes SD_participant_mean trim sequential												
+																																																																					10 = yes IQR_overall_median trim sequential												
+																																																																					11 = yes IQR_group_median trim sequential												
+																																																																					12 = yes IQR_participant_median trim sequential												
+																																																																					13 = NA not mentioned												
+																																																																					14 = z score of the RT distribution within each participant												

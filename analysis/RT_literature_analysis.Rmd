@@ -1,0 +1,407 @@
+---
+title: 'Reaction time pre-processing: effect size estimate and overview on pipelines
+  used'
+author: "Hannah Loenneker"
+date: "18 12 2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(gmodels)
+library(metafor)
+library(data.table)
+library(psych)
+```
+
+
+# Read in datasets 
+
+#### Study inclusion
+```{r}
+dat_incl <- fread(here::here("data", 
+				     "Literatur_screening_coders1_2.txt"))
+```
+
+#### Codebook for data extraction
+
+```{r}
+codebook <- read.table(here::here("data", 
+					    "Literatur_coding_sheet_codebook.txt"), 
+			     header = T, sep = "\t", dec = ".")
+```
+
+#### Dataset with extracted values for further analyses & creating necessary variables
+
+```{r}
+dat_all <- read.table(here::here("data", "Literatur_coding_sheet_2022_12_04.txt"), 
+			    header = T, sep = "\t", dec = ".")
+
+```
+
+```{r}
+# Merge pipelines
+
+dat_all <- dat_all %>%
+	unite(
+		"pipelines_all",
+		Preprocessing1_correct_answers_only,
+		Preprocessing2_exclusion_missing_data,
+		Preprocessing3_exclusion_fillers,
+		Preprocessing4_exclusion_participants,
+		Preprocessing5_exclusion_trials,
+		Preprocessing6a_trim_fixed_minimum,
+		Preprocessing6b_trim_fixed_min_value,
+		Preprocessing7a_trim_fixed_maximum,
+		Preprocessing7b_trim_fixed_max_value,
+		Preprocessing8a_trim_data_driven_type,
+		Preprocessing8b_trim_data_driven_value,
+		Preprocessing9_transformation,
+		Preprocessing10_robust_stat,
+		Preprocessing11_assumption_check,
+		Preprocessing12._multiple.comparison.correction,
+		remove = F
+	) %>%
+	unite(
+		"Preprocessing6",
+		Preprocessing6a_trim_fixed_minimum,
+		Preprocessing6b_trim_fixed_min_value,
+		remove = F
+	) %>%
+	unite(
+		"Preprocessing7",
+		Preprocessing7a_trim_fixed_maximum,
+		Preprocessing7b_trim_fixed_max_value,
+		remove = F
+	) %>%
+	unite("Preprocessing6_7", 
+		Preprocessing6, 
+		Preprocessing7, 
+		remove = F) %>%
+	unite(
+		"Preprocessing8",
+		Preprocessing8a_trim_data_driven_type,
+		Preprocessing8b_trim_data_driven_value,
+		remove = F
+	)
+
+# Variables to check if data is complete for meta-analysis
+dat_all <- dat_all %>%
+	dplyr::mutate(mean_complete = ifelse(Mean1 >= 1 &
+							 	Mean2 >= 1 | Diff_cond1_cond2_mean >= abs(1), 1, 0))   %>%
+	dplyr::mutate(sd_complete = ifelse(SD1 >= 1 &
+						     	SD2 >= 1 | Diff_cond1_cond2_SD >= 1, 1, 0)) %>%
+	dplyr::mutate(N_complete = ifelse(N_within_groups >= 1, 1, 0)) %>%
+	dplyr::mutate(N_trials = ifelse(N_repeated_measurements >= 1, 1, 0))
+# Summary variables for preprocessing steps
+dat_all <- dat_all %>%
+	dplyr::mutate(prep1 = ifelse(Preprocessing1_correct_answers_only == 1, 1, 0)) %>%
+	dplyr::mutate(
+		prep2 = ifelse(
+			Preprocessing2_exclusion_missing_data == 1 |
+				Preprocessing2_exclusion_missing_data == 2 |
+				Preprocessing2_exclusion_missing_data == 3,
+			1,
+			0
+		)
+	) %>%
+	dplyr::mutate(prep3 = ifelse(Preprocessing3_exclusion_fillers == 1, 1, 0)) %>%
+	dplyr::mutate(
+		prep4 = ifelse(
+			Preprocessing4_exclusion_participants == 1 |
+				Preprocessing4_exclusion_participants == 2,
+			1,
+			0
+		)
+	) %>%
+	dplyr::mutate(prep5 = ifelse(Preprocessing5_exclusion_trials == 1, 1, 0)) %>%
+	dplyr::mutate(prep6 = ifelse(Preprocessing6a_trim_fixed_minimum == 1, 1, 0)) %>%
+	dplyr::mutate(prep7 = ifelse(Preprocessing7a_trim_fixed_maximum == 1, 1, 0)) %>%
+	dplyr::mutate(
+		prep8 = ifelse(
+			Preprocessing8a_trim_data_driven_type == 0 |
+				Preprocessing8a_trim_data_driven_type == 13,
+			0,
+			1
+		)
+	) %>%
+	dplyr::mutate(prep9 = ifelse(
+		Preprocessing9_transformation == 0 |
+			Preprocessing9_transformation == 4,
+		0,
+		1
+	)) %>%
+	dplyr::mutate(prep_sum = prep1 + prep2 + prep3 + prep4 + prep5 + prep6 + prep7 + prep8 + prep9)
+# Summary variables for reporting proportion of excluded observations and excluded participants
+dat_all <- dat_all %>%
+	dplyr::mutate(outlier_sum = ifelse(Outliers_eliminated >= 0.01, 1, 0))
+dat_all <- dat_all %>%
+	dplyr::mutate(participant_sum = ifelse(Preprocessing4_number_excluded >= 0, 1, 0))
+# Variables for reporting the reason for preprocessing choice
+dat_all <- dat_all %>%
+	dplyr::mutate(ratio1 = ifelse(Rationale1 != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio2 = ifelse(Rationale2 != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio3 = ifelse(Rationale3 != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio4 = ifelse(Rationale4 != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio5 = ifelse(Rationale5 != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio6a = ifelse(Rationale6a != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio6b = ifelse(Rationale6b != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio7a = ifelse(Rationale7a != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio7b = ifelse(Rationale7b != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio8a = ifelse(Rationale7a != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio8b = ifelse(Rationale7b != "NA", 1, 0)) %>%
+	dplyr::mutate(ratio9 = ifelse(Rationale9 != "NA", 1, 0))
+dat_all <- dat_all %>%
+	dplyr::mutate(
+		rationale_sum = ifelse(
+			Rationale1 != "NA" |
+				Rationale2 != "NA" |
+				Rationale3 != "NA" |
+				Rationale4 != "NA" | 
+				Rationale5 != "NA" | 
+				Rationale6a != "NA" |
+				Rationale6b != "NA" |
+				Rationale7a != "NA" |
+				Rationale7b != "NA" |
+				Rationale8a != "NA" |
+				Rationale8b != "NA" | 
+				Rationale9 != "NA",
+			1,
+			0
+		)
+	)
+# Summary variables for order of preprocessing steps
+dat_all <- dat_all %>%
+	dplyr::mutate(
+		order_sum = ifelse(
+			Preprocessing1_order >= 1 &
+				Preprocessing2_order >= 1 |
+				Preprocessing3_order >= 1 |
+				Preprocessing4_order >= 1 | 
+				Preprocessing5_order >= 1 |
+				Preprocessing6_order >= 1 |
+				Preprocessing7_order >= 1 |
+				Preprocessing8_order >= 1 | 
+				Preprocessing9_order >= 1,
+			1,
+			0
+		)
+	)
+
+# Calculating effect sizes and their variance:
+dat_all <- dat_all %>%
+	dplyr::mutate(d =
+			  	(Mean2 - Mean1) / (sqrt((((SD2 ^ 2) * (N2 - 1)
+			  	) + ((SD1 ^ 2) * (N1 - 1)
+			  	)) / (N1 + N2 - 2)))) %>%
+	dplyr::mutate(d_diff =
+			  	Diff_cond1_cond2_mean / Diff_cond1_cond2_SD) %>%
+	dplyr::mutate(es = coalesce(d, d_diff)) %>%
+	dplyr::mutate(es_var =
+			  	(1 / N2) + (1 / N1) + ((es ^ 2) / (2 * (N2 + N1))))
+
+```
+
+### Summary of included studies and inter-rater reliability
+The initial literature search generated 343 results. These were screened for inclusion by a first (MME, EP, JW, CK, HL) and a second (BB, DFD, EB, HP, JPR, KM, LS, LD, LW) group of coders. After exclusion of duplicates, 334 articles remained. The first search resulted in 60 eligible articles, the second search in 53 eligible articles. Between the two groups, inter-rater reliability was Kappa =  0.87 [0.93; 0.98]. In case of disagreement, the two groups met and discussed inclusion. This resulted in a final sample of 55 included studies with 1 to 10 observations each.
+
+```{r}
+initial_n <-
+	length(dat_incl$ID) # number of studies included in the screening process
+dat_incl_no_dupl <- dat_incl %>%
+	filter(!grepl('duplicate', Reason_final))
+sum_coders1 <-
+	sum(dat_incl_no_dupl$Inclusion_1) # number of studies included by first group of coders
+sum_coders2 <-
+	sum(dat_incl_no_dupl$Inclusion_2) # number of studies included by second group of coders
+dat_kappa <- dat_incl_no_dupl %>%
+	select(Inclusion_1, Inclusion_2) %>%
+	as.data.frame(dat_kappa)
+res.k <- psych::cohen.kappa(dat_kappa, alpha = 0.05)
+res.k # inter-rater reliability
+sum_final <-
+	gmodels::CrossTable(dat_incl_no_dupl$Reason_final,
+				  dat_incl_no_dupl$Inclusion_final)
+# number of articles excluded per reason
+table(dat_all$Article) # overview of observations included per article
+
+```
+
+### Analysis of extracted data
+#### Preprocessing pipelines
+aggregate dataset to pipeline per article
+```{r}
+dat_pipe <- dat_all[!duplicated(dat_all$Article), ]
+
+```
+
+##### Summary of pipeline frequencies
+
+72.7% of studies reported that they only included correct answers in their RT analysis.
+```{r}
+CrossTable(dat_pipe$Preprocessing1_correct_answers_only) 
+# 0 = no exclusion of errors, 1 = inclusion of correct trials only, 2 = not mentioned
+```
+
+1.8% of articles excluded missing data case-wise, none excluded missing data list-wise and 3.6% used multiple imputations.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing2_exclusion_missing_data)
+# 0 = no data excluded, 1 = case-wise, 2 = list-wise, 3 = multiple imputation, 4 = not mentioned
+```
+
+7.3% reported that they excluded fillers, while 63.6% did not have fillers in their experimental design.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing3_exclusion_fillers)
+# 0 = no fillers excluded,  1 = fillers excluded, 2 = no fillers in experimental design, 3 = not mentioned
+```
+
+25.5% excluded participants case-wise and 1.8% list-wise for different quality or theoretical reasons (e.g., low accuracy rates on the Simon task of < 50%, < 75%, < 80%, or < 85%, mean reaction time larger than 2, 3 or 4 SD of the group mean, inability to attain a learning criteria within the experimental paradigm, left-handers, technical errors). One study even mentioned that the participant exclusion followed a pre-registered criterion.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing4_exclusion_participants)
+# 0 = no exclusion, 1 = case-wise, 2 = list-wise, 3 = not mentioned
+table(dat_pipe$Rationale4)
+```
+
+In 18.2% of articles, single trials were also excluded for quality reasons (e.g., simultaneous events within the same 10 ms interval, low accuracy) or because they were classified as practice.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing5_exclusion_trials)
+# 0 = no exclusion, 1 = trials excluded, 3 = not mentioned
+table(dat_pipe$Rationale5)
+```
+
+Of all articles, 65.4% did not use a fixed minimum, while the other 34.6% used different thresholds such as 100, 130, 150, 200, 214, or 300 msec. \
+A fixed maximum was defined in 61.8% cases, whereas the other 38.2% used different cut-off criteria such as 500, 600, 800, 815, 900, 1000, 1200, 1500, or 2000  msec. \
+Of all articles, 9% used a fixed minimum without a fixed maximum and 12.6% used a fixed maximum without a fixed minimum. \
+Only some studies provided a rationale for these choices such as too fast, anticipations, omissions, based on the reaction time distribution.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing6)
+CrossTable(dat_pipe$Preprocessing7)
+CrossTable(dat_pipe$Preprocessing6_7)
+table(dat_pipe$Rationale6a)
+table(dat_pipe$Rationale7a)
+table(dat_pipe$Rationale7b)
+```
+
+Of all studies, 85.5% did not report any data-driven trimming such as exclusions based on mediation absolute deviation or standard deviations. Those studies implementing a data-driven approach either trimmed according to 2 SD around the overall mean (1.8%), 1.5 z score units within the participant (1.8%), or 2 or 3 SD around the participant mean (5.5% respectively).
+Reasons given ranged from being associated with very low accuracy, over referencing an article which introduces the respective method to linking to a preregistered protocol.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing8)
+table(dat_pipe$Rationale8a)
+```
+
+Data transformations were only applied to accuracy (e.g., arcsine or square-root transformation), which is not the focus of the current study.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing9_transformation)
+table(dat_pipe$Rationale9)
+```
+
+Regarding robust statistics, 1 study used a non-parametric test and one used a bootstraping method.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing10_robust_stat)
+```
+
+Assumptions were rarely checked: 2 articles looked at sphericity, and 3 looked at normality of residuals.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing11_assumption_check)
+# 1 = sphericity checked,
+# 3 = normality of residuals,
+```
+
+Multiple comparisons correction was applied sometimes using different methods: 2 articles state Bonferroni corrections, 1 states Greenhouse-Geisser correction and 1 article reports both of them.
+
+```{r}
+CrossTable(dat_pipe$Preprocessing12._multiple.comparison.correction)
+# 1 = Bonferroni correction,
+# 2 = Greenhouse Geisser
+```
+
+Generating figure 1 (main text) and S1 (Supplementary Material)
+
+```{r}
+My_Theme = theme(
+	text = element_text(size = 14),
+	axis.title.x = element_text(size = 12),
+	axis.title.y = element_text(size = 12)
+)
+# 1: Frequency of reported preprocessing steps
+dat_pipe %>%
+	ggplot(aes(x = prep_sum, y = stat(count))) +
+	geom_bar(color = "white", fill = "#56B4E9") +
+	theme_bw()+
+	# xlim(0, 9) +
+	scale_x_continuous(breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), limits = c(-0.5, 9)) +
+	labs(title = "Frequency of reported preprocessing steps",
+	     y = "Number of articles",
+	     x = "Number of reported preprocessing steps") + 
+	My_Theme
+
+psych::describe(dat_pipe$prep_sum)
+
+# Change in number of reported steps by year
+dat_pipe$Year <- as.numeric(dat_pipe$Year)
+
+dat_pipe %>%
+	ggplot(aes(x = as.character(prep_sum), y = Year, fill=prep_sum)) +
+	geom_violin(
+		trim = FALSE,
+		draw_quantiles = c(0.25, 0.5, 0.75), 
+		alpha = 0.5
+	) + 
+	geom_jitter(
+		width = 0.15, # points spread out over 15% of available width
+		height = 0, # do not move position on the y-axis
+		alpha = 0.5, 
+		size = 3
+	) +
+	ylim(1965, 2022) +
+	labs(title = "Association between reported preprocessing steps and publication year",
+	     y = "Publication year",
+	     x = "Number of reported preprocessing steps") +
+	theme_classic() + 
+	theme(legend.position = "none") + 
+	coord_flip() + 
+	theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())
+
+# Order of preprocessing steps reported
+dat_pipe %>%
+	count(order_sum)
+
+# Articles reporting the number of excluded observations in the last 5 years
+dat_5years <- dat_pipe %>%
+	subset(Year >=2017) # 13 observations
+dat_5years$outlier_sum
+# Articles reporting order of preprocessing steps
+dat_order <- dat_pipe %>%
+	subset(order_sum == "1")
+dat_order$Year
+```
+
+#### Estimating the Simon effect
+
+```{r}
+dat_ag <- aggregate(cbind(Mean1, SD1, Mean2, SD2) ~ Article, dat_all, mean)
+dat_ag
+```
+
+##### Estimate of Simon effect: Random effects three-level meta-analysis (study/effect size per result reported):
+
+28 articles with 60 observations can be included.
+The estimate of our pooled Simon effect is d = .86 (.55 - 1.17). However, the test for heterogeneity, Q(59) = 384.77, p < .001, indicates that there are true effect size differences in the data.
+
+```{r}
+meta_model <- metafor::rma.mv(yi = es, V = es_var, slab = Article, data = dat_all, random = ~ 1 | Article/Article_exp_group_cond, test = "t", method = "REML")
+summary(meta_model)
+# sigma^2.1 = random effects variance for between article variance (between-study heterogeneity variance)
+# sigma^2.2 = random effects variance within articles
+```
+
