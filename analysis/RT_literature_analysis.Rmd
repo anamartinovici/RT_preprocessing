@@ -390,7 +390,7 @@ dat_order$Year
 #### Estimating the Simon effect
 
 ```{r}
-dat_ag <- aggregate(cbind(Mean1, SD1, Mean2, SD2) ~ Article, dat_all, mean)
+dat_ag <- aggregate(cbind(es, es_var) ~ Article, dat_all, mean)
 dat_ag
 ```
 
