@@ -81,7 +81,8 @@ analysis_sample %>%
 	theme_bw() +
 	labs(y = "Number of responses",
 	     x = "Years of experience") + 
-	My_Theme
+	My_Theme +
+	scale_y_continuous(breaks = seq(0, ceiling(max(analysis_sample$years_experience)), 1), minor_breaks = NULL)
 
 ggsave(filename = here::here("figures", 
 				     paste0("Fig", figure_number, 
