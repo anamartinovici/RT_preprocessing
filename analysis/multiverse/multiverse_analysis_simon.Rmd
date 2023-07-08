@@ -1,0 +1,960 @@
+---
+title: "Multiverse Analysis - Simon Task"
+author: "Erin M. Buchanan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+```{r libraries}
+library(rio)
+library(dplyr)
+library(here)
+library(MOTE)
+library(ggplot2)
+library(purrr)
+library(tidyr)
+library(nlme)
+```
+
+## Data
+
+```{r import-data}
+DF_original <- import(here("multiverse", "Zwaan_etal", "OSF_Data_Files", "RawDataSimonTask.csv"))
+
+DF <- DF_original %>% 
+	select(subject, blocknum, trialnum, blockcode, congruency, correct, latency, correctRT, stimulusitem2, session, sessiontype)
+```
+
+## Functions
+
+```{r functions}
+# data exclusions ----
+
+## participant ---- 
+
+### external events ----
+
+# pretend that % of subjects would be excluded due to something random 
+participant_external <- function(current_results, subject, prop_sample){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	subj_ids <- data %>% 
+		select({{subject}}) %>% 
+		unique() %>% 
+		slice_sample(prop = prop_sample) %>% 
+		pull({{subject}})
+	
+	temp <- data %>% 
+		filter({{subject}} %in% subj_ids)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "participant_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "participant_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp,
+		track_count = track_count
+	))
+}
+
+### outlier fixed ----
+
+# removed based on a minimum number of trials 
+participant_outlier_fixed <- function(current_results, subject, min_trial){
+
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		group_by({{subject}}) %>% 
+		summarize(n_trial = n()) %>% 
+		filter(n_trial >= min_trial) %>% 
+		pull({{subject}})
+	temp2 <- data %>% 
+		filter({{subject}} %in% temp)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "participant_outlier_fixed",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "participant_outlier_fixed",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+		)
+	}
+		
+	return(list(
+		data = temp2,
+		track_count = track_count
+		))
+}
+
+### outlier data ----
+
+# removed based on a post hoc data rule accuracy 
+participant_outlier_data <- function(current_results, subject, correct, min_acc){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		group_by({{subject}}) %>% 
+		summarize(accuracy = sum({{correct}})/n()) %>% 
+		filter(accuracy >= min_acc) %>% 
+		pull({{subject}})
+	temp2 <- data %>% 
+		filter({{subject}} %in% temp)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "participant_outlier_data",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "participant_outlier_data",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp2, 
+		track_count = track_count
+		))
+}
+
+## trial ---- 
+
+### external events ----
+
+# pretend that % of trials went bork 
+trial_external <- function(current_results, subject, prop_sample){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>%  
+		slice_sample(prop = prop_sample)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "trial_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "trial_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp, 
+		track_count = track_count
+		))
+}
+
+### outlier fixed ----
+
+# removed based on a pre determine minimum
+trial_outlier_fixed <- function(current_results, subject, RT, min_RT){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		filter({{RT}} >= min_RT)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "trial_outlier_fixed",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "trial_outlier_fixed",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp, 
+		track_count = track_count
+		))
+}
+
+### outlier data ----
+
+# removed based on a post hoc data rule RT time 
+trial_outlier_data <- function(current_results, subject, RT){
+
+	data <- current_results$data
+	track_count <- current_results$track_count
+
+	temp <- data %>% 
+		mutate(max_RT = mean({{RT}}, na.rm = T) + 2*sd({{RT}}, na.rm = T)) %>% 
+		filter({{RT}} <= max_RT)
+		
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "trial_outlier_data",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "trial_outlier_data",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp, 
+		track_count = track_count
+		))
+}
+
+## stimuli ---- 
+
+### external events ----
+
+# pretend that % of stimuli would be excluded due to something random 
+stimuli_external <- function(current_results, subject, stimuli, prop_sample){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		slice_sample(prop = prop_sample)
+
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "stimuli_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "stimuli_external",
+			num_people = temp %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp, 
+		track_count = track_count
+		))
+}
+
+### outlier fixed ----
+
+# removed based on a pre determined minimum of accuracy 
+stimuli_outlier_fixed <- function(current_results, subject, stimuli, correct, min_acc){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		group_by({{stimuli}}) %>% 
+		summarize(accuracy = sum({{correct}})/n()) %>% 
+		filter(accuracy >= min_acc) %>% 
+		pull({{stimuli}})
+	temp2 <- data %>% 
+		filter({{stimuli}} %in% temp)
+
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "stimuli_outlier_fixed",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "stimuli_outlier_fixed",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp2, 
+		track_count = track_count
+		))
+
+}
+
+### outlier data ----
+stimuli_outlier_data <- function(current_results, subject, stimuli, correct){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	temp <- data %>% 
+		mutate(
+			min_acc = mean({{correct}}, na.rm = T)-2*sd({{correct}}, na.rm = T)
+			) %>% 
+		group_by({{stimuli}}) %>% 
+		summarize(accuracy = sum({{correct}})/n(),
+				  min_acc = mean(min_acc)) %>% 
+		filter(accuracy >= min_acc) %>% 
+		pull({{stimuli}})
+	temp2 <- data %>% 
+		filter({{stimuli}} %in% temp)
+
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "stimuli_outlier_data",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "stimuli_outlier_data",
+			num_people = temp2 %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(temp2)
+		)
+		)
+	}
+	
+	return(list(
+		data = temp2, 
+		track_count = track_count
+		))
+}
+
+# these have to go last 
+
+# data aggregation and transformation ----
+
+calc_d <- function(current_results, trial_type, RT, subject, correct, label1, label2){
+	
+	data <- current_results$data
+	track_count <- current_results$track_count
+	
+	# test area
+	# data <- DF
+	# track_count <- track_count
+	# trial_type <- sym("congruency")
+	# RT <- sym("latency")
+	# subject <- sym("subject")
+	# correct <- sym("correct")
+	# label1 <- sym("incongruent")
+	# label2 <- sym("congruent")
+	
+	# log functions ----
+	log_DF <- data %>% 
+		filter(!is.na({{RT}})) %>% 
+		filter(!is.na({{trial_type}})) %>% 
+		filter({{correct}} == 1) %>% 
+		mutate(log_RT = log({{RT}}),
+			   subject = {{subject}},
+			   trial_type = {{trial_type}})
+	
+	descriptives_log <- log_DF %>% 
+		group_by({{subject}}, {{trial_type}}) %>%
+		summarize(avg = mean(log_RT),
+				  trial_n = n(), .groups = "keep") %>%
+		group_by({{trial_type}}) %>%
+		summarize(overall_avg = mean(avg, na.rm = T),
+				  overall_stdev = sd(avg, na.rm = T),
+				  overall_n = n(), 
+				  trial_n_avg = mean(trial_n, na.rm = T),
+				  trial_n_min = min(trial_n, na.rm = T),
+				  trial_n_max = max(trial_n, na.rm = T),
+				  .groups = "keep")
+	
+	descriptives_diff_log <- log_DF %>% 
+		group_by({{subject}}, {{trial_type}}) %>%
+		summarize(avg = mean(log_RT),
+				  trial_n = n(), .groups = "keep") %>%
+		pivot_wider(id_cols = {{subject}},
+				names_from = {{trial_type}},
+				values_from = avg) %>% 
+		mutate(differences = {{label1}} - {{label2}})
+	
+	d_log <- d.dep.t.avg(
+		m1 = descriptives_log$overall_avg[1],
+		m2 = descriptives_log$overall_avg[2],
+		sd1 = descriptives_log$overall_stdev[1],
+		sd2 = descriptives_log$overall_stdev[2],
+		n = descriptives_log$overall_n[1])
+	
+	d_z_log <- d.dep.t.diff(
+		mdiff = mean(descriptives_diff_log$differences, na.rm = T),
+		sddiff = sd(descriptives_diff_log$differences, na.rm = T),
+		n = length(descriptives_diff_log$differences))
+	
+	mlm_log <- lme(
+		fixed = log_RT ~ trial_type, 
+		random = (~1|subject), 
+		data = log_DF,
+		method = "REML",
+		control = lmeControl(opt = "optim")
+	)
+
+	# don't take the log ----
+	no_log_data <- data %>% 
+		filter(!is.na({{RT}})) %>% 
+		filter(!is.na({{trial_type}})) %>% 
+		filter({{correct}} == 1) %>% 
+		mutate(nolog_RT = {{RT}},
+			   subject = {{subject}},
+			   trial_type = {{trial_type}}) 
+	
+	# no log descriptives
+	descriptives_no_log <- no_log_data %>% 
+		group_by({{subject}}, {{trial_type}}) %>%
+		summarize(avg = mean(nolog_RT), 
+				  trial_n = n(), 
+				  .groups = "keep") %>%
+		group_by({{trial_type}}) %>%
+		summarize(overall_avg = mean(avg, na.rm = T),
+				  overall_stdev = sd(avg, na.rm = T),
+				  overall_n = n(), 
+				  trial_n_avg = mean(trial_n, na.rm = T),
+				  trial_n_min = min(trial_n, na.rm = T),
+				  trial_n_max = max(trial_n, na.rm = T),
+				  .groups = "keep")
+	
+	descriptives_diff_no_log <- no_log_data %>% 
+		group_by({{subject}}, {{trial_type}}) %>%
+		summarize(avg = mean(nolog_RT),
+				  trial_n = n(), .groups = "keep") %>%
+		pivot_wider(id_cols = {{subject}},
+				names_from = {{trial_type}},
+				values_from = avg) %>% 
+		mutate(differences = {{label1}} - {{label2}})
+	
+	d_no_log <- d.dep.t.avg(
+		m1 = descriptives_no_log$overall_avg[1],
+		m2 = descriptives_no_log$overall_avg[2],
+		sd1 = descriptives_no_log$overall_stdev[1],
+		sd2 = descriptives_no_log$overall_stdev[2],
+		n = descriptives_no_log$overall_n[1])
+	
+	d_z_no_log <- d.dep.t.diff(
+		mdiff = mean(descriptives_diff_no_log$differences, na.rm = T),
+		sddiff = sd(descriptives_diff_no_log$differences, na.rm = T),
+		n = length(descriptives_diff_no_log$differences))
+	
+	mlm_no_log <- lme(
+		fixed = nolog_RT ~ trial_type, 
+		random = (~1|subject), 
+		data = no_log_data,
+		method = "REML", 
+		control = lmeControl(opt = "optim")
+	)
+	
+	info <- data.frame(
+		mean1_log = d_log$M1,
+		mean2_log = d_log$M2,
+		sd1_log = d_log$sd1, 
+		sd2_log = d_log$sd2, 
+		subject_n_log = d_log$n,
+		trial1_avg_log = descriptives_log$trial_n_avg[1],
+		trial2_avg_log = descriptives_log$trial_n_avg[2],
+		trial1_min_log = descriptives_log$trial_n_min[1],
+		trial2_min_log = descriptives_log$trial_n_min[2],
+		trial1_max_log = descriptives_log$trial_n_max[1],
+		trial2_max_log = descriptives_log$trial_n_max[2],
+		mean_diff_log = d_z_log$mdiff, 
+		sd_diff_log = d_z_log$sddiff, 
+		d_av_log = d_log$d,
+		d_av_log_low = d_log$dlow,
+		d_av_log_high = d_log$dhigh,
+		d_z_log = d_z_log$d,
+		d_z_log_low = d_z_log$dlow,
+		d_z_log_high = d_z_log$dhigh,
+		t_log = d_z_log$t, 
+		df_log = d_z_log$df, 
+		p_log = d_z_log$p, 
+		mlm_diff_log =  mlm_log$coefficients$fixed[2], 
+		mlm_se_log = summary(mlm_log)$tTable[2,2], 
+		mlm_t_log = summary(mlm_log)$tTable[2,4], 
+		mlm_df_log = mlm_log$fixDF$X[2],
+		mlm_p_log = summary(mlm_log)$tTable[2,5],
+		total_trial_log = mlm_log[["dims"]][["N"]], 
+		mean1_no_log = d_no_log$M1,
+		mean2_no_log = d_no_log$M2,
+		sd1_no_log = d_no_log$sd1, 
+		sd2_no_log = d_no_log$sd2, 
+		subject_n_no_log = d_no_log$n,
+		trial1_avg_no_log = descriptives_no_log$trial_n_avg[1],
+		trial2_avg_no_log = descriptives_no_log$trial_n_avg[2],
+		trial1_min_no_log = descriptives_no_log$trial_n_min[1],
+		trial2_min_no_log = descriptives_no_log$trial_n_min[2],
+		trial1_max_no_log = descriptives_no_log$trial_n_max[1],
+		trial2_max_no_log = descriptives_no_log$trial_n_max[2],
+		mean_diff_no_log = d_z_no_log$mdiff, 
+		sd_diff_no_log = d_z_no_log$sddiff, 
+		d_av_no_log = d_no_log$d,
+		d_av_no_log_low = d_no_log$dlow,
+		d_av_no_log_high = d_no_log$dhigh,
+		d_z_no_log = d_z_no_log$d,
+		d_z_no_log_low = d_z_no_log$dlow,
+		d_z_no_log_high = d_z_no_log$dhigh,
+		t_no_log = d_z_no_log$t, 
+		df_no_log = d_z_no_log$df, 
+		p_no_log = d_z_no_log$p, 
+		mlm_diff_no_log =  mlm_no_log$coefficients$fixed[2], 
+		mlm_se_no_log = summary(mlm_no_log)$tTable[2,2 ], 
+		mlm_t_no_log = summary(mlm_no_log)$tTable[2,4], 
+		mlm_df_no_log = mlm_no_log$fixDF$X[2],
+		mlm_p_no_log = summary(mlm_no_log)$tTable[2,5],
+		total_trial_no_log = mlm_no_log[["dims"]][["N"]] 
+	)
+	
+	if (nrow(track_count) == 0) {
+		track_count <- data.frame(
+			exclusion = "final",
+			num_people = data %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(data)
+		)
+	} else {
+		track_count <- rbind(
+		track_count,
+		data.frame(
+			exclusion = "final",
+			num_people = data %>% select({{subject}}) %>% unique() %>% nrow(),
+			num_trials = nrow(data)
+		)
+		)
+	}
+	
+	
+	return(list(
+		info = info, 
+		track_count = track_count
+		))
+}
+
+```
+
+## Results Storage
+
+```{r create-storage}
+results <- list()
+
+track_count <- data.frame(
+	exclusion = character(), 
+	num_people = integer(),
+	num_stim = integer()
+)
+
+results_count <- list()
+```
+
+## Data Clean Up
+
+- Exclude practice trials
+- Recreate wave 1 incongruent versus congruent same stimuli 
+	- Test blocks on block code
+	- Session 1 = wave 1
+	- Session type = same and different
+
+```{r clean-data}
+# pick just one of the rows based on zwaan table wave 1 
+DF <- DF %>% 
+	filter(blockcode == "testblock") %>% 
+	filter(session == "session1") %>% # wave 1
+	filter(sessiontype == "same" | sessiontype == "different")
+```
+
+## Recreate Their Analysis
+
+- Get close to the original scores in the supplemental material
+
+```{r recreate-original}
+descriptives_theirs <- 
+	DF_original %>% 
+	group_by(subject) %>% 
+	filter(correct == 1) %>% 
+	summarize(RT_mean_person = mean(latency, na.rm = T),
+			  RT_sd_person = sd(latency, na.rm = T),
+			  accuracy = sum(correct)/n())
+
+DF_theirs <- DF_original %>% 
+	left_join(descriptives_theirs) %>% 
+	filter(latency <= RT_mean_person + 3*RT_sd_person) %>% 
+	filter(correct == 1) %>% 
+	filter(!is.na(latency)) %>% 
+	filter(blockcode == "testblock") %>% 
+	filter(session == "session1") %>% # wave 1
+	filter(sessiontype == "same")
+
+DF_theirs %>% 
+	group_by(congruency, subject) %>% 
+	summarize(average = mean(latency)) %>% 
+	ungroup() %>% 
+	group_by(congruency) %>% 
+	summarize(average_overall = mean(average),
+			  stdev = sd(average), 
+			  se = sd(average)/sqrt(n()))
+
+calc_effect <- DF_theirs %>% 
+	group_by(congruency, subject) %>% 
+	summarize(average = mean(latency), .groups = "keep") %>% 
+	pivot_wider(id_cols = subject,
+				names_from = congruency,
+				values_from = average) %>% 
+	mutate(differences = incongruent - congruent)
+
+original_effect <- d.dep.t.diff(
+	mdiff = mean(calc_effect$differences),
+	sddiff = sd(calc_effect$differences),
+	n = length(calc_effect$differences)
+)
+
+original_effect$estimate
+```
+
+## Create Combinations
+
+```{r create-combinations}
+solution <- function(v, len) {
+  if (len<=1) {
+    as.list(v)
+  } else {
+    append_each_to_list(solution(v, len-1), v)
+  } 
+}
+
+append_each_to_list <- function(L, v) {
+  purrr::flatten(lapply(v, 
+         function(n) lapply(L, function(l) c(l, n))
+         ))
+}
+
+do_two_list <- solution(c("participant_external", "participant_outlier_fixed", 
+							 "participant_outlier_data", "trial_external", 
+							 "trial_outlier_fixed", "trial_outlier_data",
+							 "stimuli_external", "stimuli_outlier_fixed", 
+							 "stimuli_outlier_data"), 2)
+dups <- (unlist(lapply(lapply(do_two_list, duplicated), sum)))
+do_two_list <- do_two_list[dups == 0]
+
+do_three_list <- solution(c("participant_external", "participant_outlier_fixed", 
+							 "participant_outlier_data", "trial_external", 
+							 "trial_outlier_fixed", "trial_outlier_data",
+							 "stimuli_external", "stimuli_outlier_fixed", 
+							 "stimuli_outlier_data"), 3)
+dups <- (unlist(lapply(lapply(do_three_list, duplicated), sum)))
+do_three_list <- do_three_list[dups == 0]
+
+do_four_list <- solution(c("participant_external", "participant_outlier_fixed", 
+							 "participant_outlier_data", "trial_external", 
+							 "trial_outlier_fixed", "trial_outlier_data",
+							 "stimuli_external", "stimuli_outlier_fixed", 
+							 "stimuli_outlier_data"), 4)
+dups <- (unlist(lapply(lapply(do_four_list, duplicated), sum)))
+do_four_list <- do_four_list[dups == 0]
+```
+
+## Do Nothing
+
+```{r no-clean}
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(current_results, congruency, latency, subject, correct, 
+									incongruent, congruent)
+results[[1]] <- cbind(as.data.frame(t(rep(0, 9))), 
+					  temp_calc$info, as.data.frame("none"))
+results_count[[1]] <- temp_calc$track_count
+```
+
+- For all analyses:
+	- Do both transformation/not and aggregation to get *d* values 
+	- Participant external: set to 3% random removal
+	- Participant outlier fixed: set to 80 minimum trials 
+	- Participant outlier data: accuracy set to 85% correct 
+	- Trial external: set to 3% random removal
+	- Trial outlier fixed: minimum RT is 250
+	- Trial outlier data: max RT set to 2*SD + mean
+	- Stimuli external: set to 3% random removal
+	- Stimuli outlier fixed: must have at least 50% correct
+	- Stimuli outlier data: must have at least 2*SD + mean correct
+
+## Do One Thing
+
+```{r one-clean}
+# data, subject, prop_sample
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(participant_external(current_results, subject, .97), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(1, rep(0, 8)))), 
+										temp_calc$info, as.data.frame("part_external"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data, subject, min_trial
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(participant_outlier_fixed(current_results, subject, 80), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(0, 1, rep(0, 7)))), 
+										temp_calc$info, as.data.frame("part_outlier_fixed"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data, subject, correct, min_acc
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(participant_outlier_data(current_results, subject, correct, .85), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 2), 1, rep(0, 6)))), 
+										temp_calc$info, as.data.frame("part_outlier_data"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data prop_sample
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(trial_external(current_results, subject, .97), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 3), 1, rep(0, 5)))), 
+										temp_calc$info, as.data.frame("prop_sample"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data RT min_RT
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(trial_outlier_fixed(current_results, subject, latency, 250), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 4), 1, rep(0, 4)))), 
+										temp_calc$info, as.data.frame("trial_outlier_fixed"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data RT max_RT
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(trial_outlier_data(current_results, subject, latency), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 5), 1, rep(0, 3)))), 
+										temp_calc$info, as.data.frame("trial_outlier_data"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data, stimuli, prop_sample
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(stimuli_external(current_results, subject, stimulusitem2, .97), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 6), 1, rep(0, 2)))), 
+										temp_calc$info, as.data.frame("stimuli_external"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data, stimuli, correct, min_acc
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(stimuli_outlier_fixed(current_results, subject, stimulusitem2, correct, .50), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 7), 1, rep(0, 1)))), 
+									temp_calc$info, as.data.frame("stimuli_outlier_fixed"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+
+# data, stimuli, correct, min_acc
+current_results <- list(data = DF, track_count = track_count)
+temp_calc <- calc_d(stimuli_outlier_data(current_results, subject, stimulusitem2, correct), 
+					congruency, latency, subject, correct, incongruent, congruent)
+results[[length(results) + 1]] <- cbind(as.data.frame(t(c(rep(0, 8), 1))),  
+										temp_calc$info, as.data.frame("stimuli_outlier_data"))
+results_count[[length(results_count) + 1]] <- temp_calc$track_count
+```
+
+## Do More Than One - Set Up
+
+```{r setup-more-one}
+# create list of arguments 
+args <- list(
+	participant_external = list(sym("temp"),
+								subject = sym("subject"), 
+								prop_sample = .97),
+	participant_outlier_fixed = list(sym("temp"),
+									 subject = sym("subject"),
+									 min_trial = 80), 
+	participant_outlier_data = list(sym("temp"),
+									subject = sym("subject"), 
+									correct = sym("correct"), 
+									min_acc = .85), 
+	trial_external = list(sym("temp"),
+						  subject = sym("subject"), 
+						  prop_sample = .97),
+	trial_outlier_fixed = list(sym("temp"),
+							   subject = sym("subject"), 
+							   RT = sym("latency"), 
+							   min_RT = 250),
+	trial_outlier_data = list(sym("temp"),
+							  subject = sym("subject"), 
+							  RT = sym("latency")),
+	stimuli_external = list(sym("temp"),
+							subject = sym("subject"), 
+							stimuli = sym("stimulusitem2"), 
+							prop_sample = .97),
+	stimuli_outlier_fixed = list(sym("temp"),
+								 subject = sym("subject"), 
+								 stimuli = sym("stimulusitem2"), 
+								 correct = sym("correct"), 
+								 min_acc = .50),
+	stimuli_outlier_data = list(sym("temp"),
+								subject = sym("subject"), 
+								stimuli = sym("stimulusitem2"), 
+								correct = sym("correct"))
+	)
+# create list of patterns
+patterns <- list(
+	participant_external = c(1, rep(0, 8)), 
+	participant_outlier_fixed = c(0, 1, rep(0, 7)), 
+	participant_outlier_data = c(rep(0, 2), 1, rep(0, 6)), 
+	trial_external = c(rep(0, 3), 1, rep(0, 5)), 
+	trial_outlier_fixed = c(rep(0, 4), 1, rep(0, 4)), 
+	trial_outlier_data = c(rep(0, 5), 1, rep(0, 3)), 
+	stimuli_external = c(rep(0, 6), 1, rep(0, 2)), 
+	stimuli_outlier_fixed = c(rep(0, 7), 1, rep(0, 1)), 
+	stimuli_outlier_data = c(rep(0, 8), 1)
+)
+```
+
+## Do More Than One - Run 
+
+```{r two-list}
+# loop over the list of functions
+for (i in 1:length(do_two_list)){
+	# create a temp dataframe
+	pattern_total <- c(rep(0, 9))
+	pattern_name <- ""
+	# loop over the functions within the list
+	# first time grab the overall data 
+	temp <- list(data = DF, track_count = track_count)
+	for (func in unlist(do_two_list[i])){
+		temp <- do.call(func, args[[func]])
+		pattern_total <- pattern_total + patterns[[func]]
+		pattern_name <- paste(pattern_name, names(patterns[func]), sep = "|")
+		# temp is the new input 
+	}
+	
+	# take that temp dataframe and apply last step 
+	temp_calc <- calc_d(temp, congruency, latency, subject, correct, incongruent, congruent)
+	results[[length(results) + 1]] <- cbind(as.data.frame(t(pattern_total)),  
+										temp_calc$info, as.data.frame(pattern_name))
+	results_count[[length(results_count) + 1]] <- temp_calc$track_count
+} 
+```
+
+```{r three-list}
+# loop over the list of functions
+for (i in 1:length(do_three_list)){
+	# create a temp dataframe
+	pattern_total <- c(rep(0, 9))
+	pattern_name <- ""
+	# loop over the functions within the list
+	# first time grab the overall data 
+	temp <- list(data = DF, track_count = track_count)
+	for (func in unlist(do_three_list[i])){
+		temp <- do.call(func, args[[func]])
+		pattern_total <- pattern_total + patterns[[func]]
+		pattern_name <- paste(pattern_name, names(patterns[func]), sep = "|")
+	}
+	
+	# take that temp dataframe and apply last step 
+	temp_calc <- calc_d(temp, congruency, latency, subject, correct, incongruent, congruent)
+	results[[length(results) + 1]] <- cbind(as.data.frame(t(pattern_total)),  
+										temp_calc$info, as.data.frame(pattern_name))
+	results_count[[length(results_count) + 1]] <- temp_calc$track_count
+} 
+```
+
+```{r four-list}
+# loop over the list of functions
+for (i in 1:length(do_four_list)){
+	# create a temp dataframe
+	pattern_total <- c(rep(0, 9))
+	pattern_name <- ""
+	# loop over the functions within the list
+	# first time grab the overall data 
+	temp <- list(data = DF, track_count = track_count)
+	for (func in unlist(do_four_list[i])){
+		temp <- do.call(func, args[[func]])
+		pattern_total <- pattern_total + patterns[[func]]
+		pattern_name <- paste(pattern_name, names(patterns[func]), sep = "|")
+	}
+	
+	# take that temp dataframe and apply last step 
+	temp_calc <- calc_d(temp, congruency, latency, subject, correct, incongruent, congruent)
+	results[[length(results) + 1]] <- cbind(as.data.frame(t(pattern_total)),  
+										temp_calc$info, as.data.frame(pattern_name))
+	results_count[[length(results_count) + 1]] <- temp_calc$track_count
+} 
+```
+
+## Examine Results
+
+```{r create-results}
+results_unlist <- lapply(results, unlist)
+final_DF <- as.data.frame(do.call(rbind, results_unlist))
+colnames(final_DF)[1:9] <- c("participant_external", "participant_outlier_fixed", 
+							 "participant_outlier_data", "trial_external", 
+							 "trial_outlier_fixed", "trial_outlier_data",
+							 "stimuli_external", "stimuli_outlier_fixed", 
+							 "stimuli_outlier_data")
+colnames(final_DF)[66] <- "order"
+
+# add a row number to the results_count
+for (i in 1:length(results_count)){
+	results_count[[i]]$order <- 1:nrow(results_count[[i]])
+	results_count[[i]]$row_number <- i
+}
+
+final_results_DF <- as.data.frame(do.call(rbind, results_count))
+```
+
+## Write Results
+
+```{r write-results}
+write.csv(final_DF, here("multiverse", "output", "final_simon_multiverse_DF.csv"), row.names = F)
+write.csv(final_results_DF, here("multiverse", "output",  "final_simon_multiverse_results_DF.csv"), row.names = F)
+```
+
