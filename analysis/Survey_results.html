@@ -1580,7 +1580,7 @@ font-size: 0.95em;
 
 <h1 class="title toc-ignore">Analyse survey responses</h1>
 <h4 class="author">Ana Martinovici</h4>
-<h4 class="date">2023-05-24 20:43:42</h4>
+<h4 class="date">2023-11-07 12:27:32</h4>
 
 </div>
 
@@ -1593,6 +1593,7 @@ font-size: 0.95em;
 <pre><code>## Warning: package &#39;readr&#39; was built under R version 4.2.3</code></pre>
 <pre><code>## Warning: package &#39;purrr&#39; was built under R version 4.2.3</code></pre>
 <pre><code>## Warning: package &#39;dplyr&#39; was built under R version 4.2.3</code></pre>
+<pre><code>## Warning: package &#39;stringr&#39; was built under R version 4.2.3</code></pre>
 <pre><code>## Warning: package &#39;forcats&#39; was built under R version 4.2.3</code></pre>
 <pre><code>## Warning: package &#39;lubridate&#39; was built under R version 4.2.3</code></pre>
 <pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
@@ -1604,11 +1605,10 @@ font-size: 0.95em;
 ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
 ## ✖ dplyr::filter() masks stats::filter()
 ## ✖ dplyr::lag()    masks stats::lag()
-## ℹ Use the ]8;;http://conflicted.r-lib.org/conflicted package]8;; to force all conflicts to become errors</code></pre>
+## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
 <pre class="r"><code>library(&quot;Cairo&quot;)
 library(&quot;here&quot;)</code></pre>
-<pre><code>## Warning: package &#39;here&#39; was built under R version 4.2.3</code></pre>
-<pre><code>## here() starts at C:/Users/katja/Desktop/GIT/RT_preprocessing</code></pre>
+<pre><code>## here() starts at C:/Users/marti/Desktop/RT_preprocessing</code></pre>
 <pre class="r"><code>load(here::here(&quot;data&quot;, &quot;survey_data.RData&quot;))</code></pre>
 <div id="number-of-responses" class="section level1" number="1">
 <h1><span class="header-section-number">1</span> Number of
@@ -1881,7 +1881,9 @@ aux_df %&gt;%
      type = &quot;cairo&quot;)</code></pre>
 <pre><code>## Warning: Using ragg device as default. Ignoring `type` and `antialias`
 ## arguments</code></pre>
-<pre class="r"><code>figure_number &lt;- figure_number + 1</code></pre>
+<pre class="r"><code>figure_number &lt;- figure_number + 1
+
+df_frequency &lt;- aux_df</code></pre>
 <p>Importance (“How important do you think this processing step is for
 accuracy in analyses and interpretation?”)</p>
 <pre class="r"><code>aux_df &lt;- analysis_sample %&gt;%
@@ -2108,6 +2110,93 @@ mean(analysis_sample$likelihood_reproduce, na.rm = T)</code></pre>
 <pre><code>## [1] 83.23729</code></pre>
 <pre class="r"><code>sd(analysis_sample$likelihood_reproduce, na.rm = T)</code></pre>
 <pre><code>## [1] 14.86182</code></pre>
+<p>Checks against reports for how often observations are excluded.</p>
+<p>Participants report how often they exclude observations for each of
+three exclusion criteria and three types of observations (i.e.,
+participants, stimuli, trials). This corresponds to each participant
+providing nine responses to ‘How often do you exclude …?’. Participants
+who exclude observations at least sometimes for each of the nine
+combinations (exclusion criteria * type of observations) have a score of
+9.</p>
+<pre class="r"><code>aux_df &lt;- df_frequency %&gt;%
+    filter(do_what == &quot;Exclude&quot;)
+aux_df &lt;- aux_df %&gt;%
+    mutate(is_excluding = if_else(var_value %in% c(&quot;Sometimes&quot;,
+                                     &quot;About half the time&quot;,
+                                     &quot;Most of the time&quot;,
+                                     &quot;Always&quot;), 
+                        1, 0))
+aux_df &lt;- aux_df %&gt;%
+    group_by(pseudo_ResponseID) %&gt;%
+    summarise(n_times_excluding = sum(is_excluding)) %&gt;%
+    ungroup()
+
+aux_df %&gt;%
+    group_by(n_times_excluding) %&gt;%
+    summarise(n()) %&gt;%
+    ungroup()</code></pre>
+<pre><code>## # A tibble: 9 × 2
+##   n_times_excluding `n()`
+##               &lt;dbl&gt; &lt;int&gt;
+## 1                 1     4
+## 2                 2     4
+## 3                 3     6
+## 4                 4    10
+## 5                 5    14
+## 6                 6    14
+## 7                 7     4
+## 8                 8     2
+## 9                 9     8</code></pre>
+<p>All participants exclude observations for at least one of the nine
+situations. Eight participants report excluding observations for all of
+the nine criteria and types combinations. Next, I will calculate an
+average score of how often each participants reports the exact number of
+excluded observations (average over the nine situations).</p>
+<pre class="r"><code>aux_test &lt;- df_frequency %&gt;%
+    filter(do_what == &quot;Report the exact number\nof excluded observations&quot;)
+aux_test &lt;- aux_test %&gt;%
+    mutate(num_value = as.integer(var_value) - 2)
+aux_test %&gt;%
+    group_by(num_value,
+           var_value) %&gt;%
+    summarise(n())</code></pre>
+<pre><code>## `summarise()` has grouped output by &#39;num_value&#39;. You can override using the
+## `.groups` argument.</code></pre>
+<pre><code>## # A tibble: 6 × 3
+## # Groups:   num_value [6]
+##   num_value var_value           `n()`
+##       &lt;dbl&gt; &lt;fct&gt;               &lt;int&gt;
+## 1        -1 n.a.                    2
+## 2         0 Never                  17
+## 3         1 Sometimes              24
+## 4         2 About half the time     7
+## 5         3 Most of the time       36
+## 6         4 Always                254</code></pre>
+<pre class="r"><code>aux_test &lt;- aux_test %&gt;%
+    mutate(num_value = if_else(num_value == -1, 0, num_value))
+aux_test &lt;- aux_test %&gt;%
+    group_by(pseudo_ResponseID) %&gt;%
+    summarise(num_value = mean(num_value)) %&gt;%
+    ungroup()
+aux_test &lt;- aux_test %&gt;%
+    left_join(analysis_sample %&gt;%
+                select(pseudo_ResponseID,
+                     likelihood_reproduce),
+            by = c(&quot;pseudo_ResponseID&quot;))</code></pre>
+<p>The correlation between stated likelihood to reproduce and stated
+frequency of reporting the exact number of excluded observations is:</p>
+<pre class="r"><code>cor.test(aux_test$num_value, aux_test$likelihood_reproduce)</code></pre>
+<pre><code>## 
+##  Pearson&#39;s product-moment correlation
+## 
+## data:  aux_test$num_value and aux_test$likelihood_reproduce
+## t = 2.4798, df = 57, p-value = 0.01613
+## alternative hypothesis: true correlation is not equal to 0
+## 95 percent confidence interval:
+##  0.06082996 0.52609303
+## sample estimates:
+##       cor 
+## 0.3120513</code></pre>
 </div>
 <div id="software" class="section level1" number="6">
 <h1><span class="header-section-number">6</span> Software</h1>
@@ -2344,7 +2433,7 @@ study, by participants (n = 66) in the analysis sample:</p>
 ##  [1] highr_0.10        bslib_0.4.2       compiler_4.2.2    pillar_1.9.0     
 ##  [5] jquerylib_0.1.4   tools_4.2.2       digest_0.6.31     timechange_0.2.0 
 ##  [9] jsonlite_1.8.4    evaluate_0.21     lifecycle_1.0.3   gtable_0.3.3     
-## [13] pkgconfig_2.0.3   rlang_1.1.1       cli_3.4.1         rstudioapi_0.14  
+## [13] pkgconfig_2.0.3   rlang_1.1.1       cli_3.6.1         rstudioapi_0.14  
 ## [17] yaml_2.3.7        xfun_0.39         fastmap_1.1.1     withr_2.5.0      
 ## [21] knitr_1.42        systemfonts_1.0.4 hms_1.1.3         generics_0.1.3   
 ## [25] sass_0.4.6        vctrs_0.6.2       rprojroot_2.0.3   grid_4.2.2       

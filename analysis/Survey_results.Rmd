@@ -310,6 +310,8 @@ ggsave(filename = here::here("figures",
 
 figure_number <- figure_number + 1
 
+df_frequency <- aux_df
+
 ```
 
 Importance ("How important do you think this processing step is for accuracy in analyses and interpretation?")
@@ -551,6 +553,65 @@ mean(analysis_sample$likelihood_reproduce, na.rm = T)
 sd(analysis_sample$likelihood_reproduce, na.rm = T)
 
 ```
+
+Checks against reports for how often observations are excluded.
+
+Participants report how often they exclude observations for each of three exclusion criteria and three types of observations (i.e., participants, stimuli, trials). This corresponds to each participant providing nine responses to 'How often do you exclude ...?'. Participants who exclude observations at least sometimes for each of the nine combinations (exclusion criteria * type of observations) have a score of 9. 
+
+```{r}
+aux_df <- df_frequency %>%
+	filter(do_what == "Exclude")
+aux_df <- aux_df %>%
+	mutate(is_excluding = if_else(var_value %in% c("Sometimes",
+								     "About half the time",
+								     "Most of the time",
+								     "Always"), 
+						1, 0))
+aux_df <- aux_df %>%
+	group_by(pseudo_ResponseID) %>%
+	summarise(n_times_excluding = sum(is_excluding)) %>%
+	ungroup()
+
+aux_df %>%
+	group_by(n_times_excluding) %>%
+	summarise(n()) %>%
+	ungroup()
+
+
+```
+
+All participants exclude observations for at least one of the nine situations. Eight participants report excluding observations for all of the nine criteria and types combinations. Next, I will calculate an average score of how often each participants reports the exact number of excluded observations (average over the nine situations).
+
+
+```{r}
+aux_test <- df_frequency %>%
+	filter(do_what == "Report the exact number\nof excluded observations")
+aux_test <- aux_test %>%
+	mutate(num_value = as.integer(var_value) - 2)
+aux_test %>%
+	group_by(num_value,
+		   var_value) %>%
+	summarise(n())
+aux_test <- aux_test %>%
+	mutate(num_value = if_else(num_value == -1, 0, num_value))
+aux_test <- aux_test %>%
+	group_by(pseudo_ResponseID) %>%
+	summarise(num_value = mean(num_value)) %>%
+	ungroup()
+aux_test <- aux_test %>%
+	left_join(analysis_sample %>%
+		    	select(pseudo_ResponseID,
+		    		 likelihood_reproduce),
+		    by = c("pseudo_ResponseID"))
+```
+
+The correlation between stated likelihood to reproduce and stated frequency of reporting the exact number of excluded observations is:
+
+```{r}
+cor.test(aux_test$num_value, aux_test$likelihood_reproduce)
+
+```
+
 
 # Software
 
